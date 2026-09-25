@@ -224,7 +224,7 @@ function showRoom(roomId: string) {
       sendInput(b.dataset.hand as Hand);
     });
   });
-  const stage = document.querySelector('#stage')!;
+  const stage = document.querySelector<HTMLElement>('#stage')!;
   stage.addEventListener('contextmenu', e => e.preventDefault());
   stage.addEventListener('mousedown', (e: MouseEvent) => {
     if (e.button === 0) sendInput('left');
@@ -306,34 +306,66 @@ function updateCenterAction(me: Player | null) {
 
 function syncCharacters() {
   if (!state || !scene || !pixi) return;
+
+  const currentState = state;
+
   for (const id of [...visualPlayers.keys()]) {
-    if (!state.players.some(p => p.id === id)) {
+    if (!currentState.players.some(p => p.id === id)) {
       visualPlayers.get(id)?.root.destroy({ children: true });
       visualPlayers.delete(id);
     }
   }
-  state.players.forEach((p, index) => {
+
+  currentState.players.forEach((p, index) => {
     let v = visualPlayers.get(p.id);
+
     if (!v) {
       v = makeCharacter(p);
       visualPlayers.set(p.id, v);
       scene!.addChild(v.root);
     }
-    const pos = playerLayoutPosition(index, state.players.length, pixi!.screen.width, pixi!.screen.height);
+
+    const pos = playerLayoutPosition(
+      index,
+      currentState.players.length,
+      pixi!.screen.width,
+      pixi!.screen.height
+    );
+
     v.root.x = pos.x;
     v.root.y = pos.y;
     v.root.scale.set(pos.scale);
+
     v.auraText.text = `${p.aura}`;
     v.rankText.text = p.rank;
-    v.lifeText.text = `${'❤'.repeat(Math.max(0, 3 - p.mistakes))}${'♡'.repeat(Math.min(3, p.mistakes))}`;
+
+    v.lifeText.text =
+      `${'❤'.repeat(Math.max(0, 3 - p.mistakes))}` +
+      `${'♡'.repeat(Math.min(3, p.mistakes))}`;
+
     v.name.text = p.name + (p.id === myId ? ' • VOCÊ' : '');
-    v.comboText.text = p.combo >= 2 ? `COMBO x${p.combo}` : '';
-    v.comboText.alpha = p.combo >= 2 ? Math.min(1, .55 + p.combo * .025) : 0;
-    if (p.combo > v.lastCombo && p.combo >= 2) punchCombo(v.comboText, p.combo);
+
+    v.comboText.text = p.combo >= 2
+      ? `COMBO x${p.combo}`
+      : '';
+
+    v.comboText.alpha = p.combo >= 2
+      ? Math.min(1, .55 + p.combo * .025)
+      : 0;
+
+    if (p.combo > v.lastCombo && p.combo >= 2) {
+      punchCombo(v.comboText, p.combo);
+    }
+
     v.lastCombo = p.combo;
     v.root.alpha = p.eliminated ? .35 : 1;
+
     applyRankVisuals(v, p);
-    drawBar(v.bar, rankProgress(p.aura).progress, p.aura >= 67);
+    drawBar(
+      v.bar,
+      rankProgress(p.aura).progress,
+      p.aura >= 67
+    );
   });
 }
 
@@ -367,7 +399,16 @@ function makeCharacter(p: Player): VisualPlayer {
   root.addChild(body);
 
   const labelStyle = new TextStyle({ fontFamily: 'Arial', fill: 0xffffff, fontSize: 14, fontWeight: '900', stroke: { color: 0x000000, width: 4 } });
-  const auraStyle = new TextStyle({ fontFamily: 'Arial', fill: 0xffffff, fontSize: 28, fontWeight: '1000', stroke: { color: 0x000000, width: 5 } });
+  const auraStyle = new TextStyle({
+  fontFamily: 'Arial',
+  fill: 0xffffff,
+  fontSize: 28,
+  fontWeight: '900',
+  stroke: {
+    color: 0x000000,
+    width: 5
+  }
+});
   const auraText = new Text({ text: '0', style: auraStyle });
   auraText.anchor.set(.5);
   auraText.y = -142;
@@ -379,7 +420,19 @@ function makeCharacter(p: Player): VisualPlayer {
   rankText.y = -102;
   root.addChild(rankText);
 
-  const comboText = new Text({ text: '', style: { fontFamily: 'Arial', fill: 0xffd84a, fontSize: 15, fontWeight: '1000', stroke: { color: 0x000000, width: 4 } } });
+  const comboText = new Text({
+  text: '',
+  style: {
+    fontFamily: 'Arial',
+    fill: 0xffd84a,
+    fontSize: 15,
+    fontWeight: '900',
+    stroke: {
+      color: 0x000000,
+      width: 4
+    }
+  }
+});
   comboText.anchor.set(.5);
   comboText.y = -72;
   comboText.alpha = 0;
