@@ -11,7 +11,6 @@ type Player = {
   mistakes: number;
   combo: number;
   expected: Hand;
-  eliminated: boolean;
   joinedAt: number;
   host: boolean;
   rank: string;
@@ -37,7 +36,6 @@ type VisualPlayer = {
   auraRing: Graphics;
   auraText: Text;
   rankText: Text;
-  lifeText: Text;
   comboText: Text;
   bar: Graphics;
   name: Text;
@@ -180,7 +178,7 @@ function layout(children: string) {
 
 function showHome() {
   destroyPixi();
-  layout(`<section class="panel home"><div class="kicker">FARME AURA. NÃO VACILE.</div><div class="logo67">67</div><h1>CAMPEONATO DE 67</h1><p class="subtitle">Desafie até 3 amigos. Alterne esquerda e direita o mais rápido possível, farme Aura e tente não torrar suas 3 vidas.</p><form id="join-form" class="form"><input id="nickname" maxlength="18" placeholder="Seu nome" value="${escapeHtml(nameFromStorage())}" autocomplete="nickname"><button class="primary" type="submit">CRIAR CAMPEONATO</button>${roomFromUrl() ? `<button id="join-room" class="secondary" type="button">ENTRAR NA SALA ${roomFromUrl()}</button>` : ''}</form><div class="help">Teclado ou mouse<div class="arrows"><span class="key">A / ←</span><span class="key">D / →</span></div></div></section>`);
+  layout(`<section class="panel home"><div class="kicker">FARME AURA. NÃO VACILE.</div><div class="logo67">67</div><h1>CAMPEONATO DE 67</h1><p class="subtitle">Desafie até 3 amigos. Alterne esquerda e direita o mais rápido possível e farme o máximo de Aura antes do tempo acabar.</p><form id="join-form" class="form"><input id="nickname" maxlength="18" placeholder="Seu nome" value="${escapeHtml(nameFromStorage())}" autocomplete="nickname"><button class="primary" type="submit">CRIAR CAMPEONATO</button>${roomFromUrl() ? `<button id="join-room" class="secondary" type="button">ENTRAR NA SALA ${roomFromUrl()}</button>` : ''}</form><div class="help">Teclado ou mouse<div class="arrows"><span class="key">A / ←</span><span class="key">D / →</span></div></div></section>`);
   const form = document.querySelector<HTMLFormElement>('#join-form')!;
   const input = document.querySelector<HTMLInputElement>('#nickname')!;
   form.addEventListener('submit', e => { e.preventDefault(); ensureAudio(); connect(randomRoom(), input.value); });
@@ -273,7 +271,7 @@ function renderState() {
   const me = state.players.find(p => p.id === myId) ?? state.players.find(p => p.name === nameFromStorage());
   if (me) myId = me.id;
   const list = document.querySelector('#players');
-  if (list) list.innerHTML = state.players.map(p => `<div class="player-chip ${p.id === myId ? 'me' : ''}"><div class="name">${escapeHtml(p.name)} ${p.host ? '👑' : ''}</div><div class="meta">${p.rank} · ${p.aura} AURA · ${'❤'.repeat(Math.max(0, 3 - p.mistakes))}${'♡'.repeat(Math.min(3, p.mistakes))}</div></div>`).join('') + Array.from({ length: Math.max(0, 4 - state.players.length) }, () => `<div class="player-chip"><div class="name">Aguardando...</div><div class="meta">compartilhe o link</div></div>`).join('');
+  if (list) list.innerHTML = state.players.map(p => `<div class="player-chip ${p.id === myId ? 'me' : ''}"><div class="name">${escapeHtml(p.name)} ${p.host ? '👑' : ''}</div><div class="meta">${p.rank} · ${p.aura} AURA</div></div>`).join('') + Array.from({ length: Math.max(0, 4 - state.players.length) }, () => `<div class="player-chip"><div class="name">Aguardando...</div><div class="meta">compartilhe o link</div></div>`).join('');
   const stageWrap = document.querySelector<HTMLElement>('#stage');
   if (stageWrap) {
     stageWrap.classList.toggle('stage-four', state.players.length === 4);
@@ -306,66 +304,33 @@ function updateCenterAction(me: Player | null) {
 
 function syncCharacters() {
   if (!state || !scene || !pixi) return;
-
   const currentState = state;
-
   for (const id of [...visualPlayers.keys()]) {
     if (!currentState.players.some(p => p.id === id)) {
       visualPlayers.get(id)?.root.destroy({ children: true });
       visualPlayers.delete(id);
     }
   }
-
   currentState.players.forEach((p, index) => {
     let v = visualPlayers.get(p.id);
-
     if (!v) {
       v = makeCharacter(p);
       visualPlayers.set(p.id, v);
       scene!.addChild(v.root);
     }
-
-    const pos = playerLayoutPosition(
-      index,
-      currentState.players.length,
-      pixi!.screen.width,
-      pixi!.screen.height
-    );
-
+    const pos = playerLayoutPosition(index, currentState.players.length, pixi!.screen.width, pixi!.screen.height);
     v.root.x = pos.x;
     v.root.y = pos.y;
     v.root.scale.set(pos.scale);
-
     v.auraText.text = `${p.aura}`;
     v.rankText.text = p.rank;
-
-    v.lifeText.text =
-      `${'❤'.repeat(Math.max(0, 3 - p.mistakes))}` +
-      `${'♡'.repeat(Math.min(3, p.mistakes))}`;
-
     v.name.text = p.name + (p.id === myId ? ' • VOCÊ' : '');
-
-    v.comboText.text = p.combo >= 2
-      ? `COMBO x${p.combo}`
-      : '';
-
-    v.comboText.alpha = p.combo >= 2
-      ? Math.min(1, .55 + p.combo * .025)
-      : 0;
-
-    if (p.combo > v.lastCombo && p.combo >= 2) {
-      punchCombo(v.comboText, p.combo);
-    }
-
+    v.comboText.text = p.combo >= 2 ? `COMBO x${p.combo}` : '';
+    v.comboText.alpha = p.combo >= 2 ? Math.min(1, .55 + p.combo * .025) : 0;
+    if (p.combo > v.lastCombo && p.combo >= 2) punchCombo(v.comboText, p.combo);
     v.lastCombo = p.combo;
-    v.root.alpha = p.eliminated ? .35 : 1;
-
     applyRankVisuals(v, p);
-    drawBar(
-      v.bar,
-      rankProgress(p.aura).progress,
-      p.aura >= 67
-    );
+    drawBar(v.bar, rankProgress(p.aura).progress, p.aura >= 67);
   });
 }
 
@@ -398,17 +363,7 @@ function makeCharacter(p: Player): VisualPlayer {
   const body = new Graphics();
   root.addChild(body);
 
-  const labelStyle = new TextStyle({ fontFamily: 'Arial', fill: 0xffffff, fontSize: 14, fontWeight: '900', stroke: { color: 0x000000, width: 4 } });
-  const auraStyle = new TextStyle({
-  fontFamily: 'Arial',
-  fill: 0xffffff,
-  fontSize: 28,
-  fontWeight: '900',
-  stroke: {
-    color: 0x000000,
-    width: 5
-  }
-});
+  const auraStyle = new TextStyle({ fontFamily: 'Arial', fill: 0xffffff, fontSize: 28, fontWeight: '900', stroke: { color: 0x000000, width: 5 } });
   const auraText = new Text({ text: '0', style: auraStyle });
   auraText.anchor.set(.5);
   auraText.y = -142;
@@ -420,19 +375,7 @@ function makeCharacter(p: Player): VisualPlayer {
   rankText.y = -102;
   root.addChild(rankText);
 
-  const comboText = new Text({
-  text: '',
-  style: {
-    fontFamily: 'Arial',
-    fill: 0xffd84a,
-    fontSize: 15,
-    fontWeight: '900',
-    stroke: {
-      color: 0x000000,
-      width: 4
-    }
-  }
-});
+  const comboText = new Text({ text: '', style: { fontFamily: 'Arial', fill: 0xffd84a, fontSize: 15, fontWeight: '900', stroke: { color: 0x000000, width: 4 } } });
   comboText.anchor.set(.5);
   comboText.y = -72;
   comboText.alpha = 0;
@@ -444,18 +387,13 @@ function makeCharacter(p: Player): VisualPlayer {
   name.y = 82;
   root.addChild(name);
 
-  const lifeText = new Text({ text: '❤❤❤', style: labelStyle });
-  lifeText.anchor.set(.5);
-  lifeText.y = 111;
-  root.addChild(lifeText);
-
   const bar = new Graphics();
-  bar.y = 132;
+  bar.y = 112;
   root.addChild(bar);
   drawBar(bar, 0, false);
 
   const visual: VisualPlayer = {
-    root, body, glow, auraRing, auraText, rankText, lifeText, comboText, bar, name, leftHand, rightHand,
+    root, body, glow, auraRing, auraText, rankText, comboText, bar, name, leftHand, rightHand,
     leftBaseY: leftHand.y, rightBaseY: rightHand.y, handBaseScale: 1, bodyBaseScale: 1, rankIndex: -1, lastCombo: 0
   };
   applyRankVisuals(visual, p);
@@ -763,7 +701,7 @@ function showResults() {
   const stage = document.querySelector('#stage');
   if (!stage) return;
   const sorted = [...state.players].sort((a, b) => b.aura - a.aura || a.mistakes - b.mistakes);
-  stage.insertAdjacentHTML('beforeend', `<div class="overlay" id="results-overlay"><div class="overlay-card"><div class="kicker">RESULTADO</div><h2>${sorted[0]?.id === myId ? 'VOCÊ LEVOU' : 'ACABOU'}</h2><p>${sorted[0]?.rank ?? ''} • ${sorted[0]?.aura ?? 0} AURA</p><div class="results">${sorted.map((p, i) => `<div class="result-row"><span>${i + 1}. ${escapeHtml(p.name)}</span><strong>${p.aura} ⚡</strong></div>`).join('')}</div><button id="rematch" class="primary">REVANCHE</button></div></div>`);
+  stage.insertAdjacentHTML('beforeend', `<div class="overlay" id="results-overlay"><div class="overlay-card"><div class="kicker">RESULTADO</div><h2>${sorted[0]?.id === myId ? 'VOCÊ LEVOU' : 'ACABOU'}</h2><p>${sorted[0]?.rank ?? ''} • ${sorted[0]?.aura ?? 0} AURA</p><div class="results">${sorted.map((p, i) => `<div class="result-row"><span>${i + 1}. ${escapeHtml(p.name)}</span><strong>${p.aura} ⚡ · ${p.mistakes} erro${p.mistakes === 1 ? '' : 's'}</strong></div>`).join('')}</div><button id="rematch" class="primary">REVANCHE</button></div></div>`);
   document.querySelector('#rematch')?.addEventListener('click', () => send({ type: 'rematch' }));
 }
 

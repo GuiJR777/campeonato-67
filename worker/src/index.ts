@@ -11,7 +11,6 @@ type Attachment = {
   mistakes: number;
   combo: number;
   expected: Hand;
-  eliminated: boolean;
   joinedAt: number;
   host: boolean;
   status: RoomStatus;
@@ -67,7 +66,7 @@ export class GameRoom extends DurableObject<Env> {
     const first = current.length === 0;
     const baseStatus = current[0]?.status ?? 'lobby';
     if (baseStatus !== 'lobby') return new Response('Match already started', { status: 409 });
-    const attachment: Attachment = { id: id(), name, aura: 0, mistakes: 0, combo: 0, expected: 'left', eliminated: false, joinedAt: Date.now(), host: first, status: 'lobby', startedAt: null, winnerId: null, lastInputAt: 0, roomId: this.roomId };
+    const attachment: Attachment = { id: id(), name, aura: 0, mistakes: 0, combo: 0, expected: 'left', joinedAt: Date.now(), host: first, status: 'lobby', startedAt: null, winnerId: null, lastInputAt: 0, roomId: this.roomId };
     server.serializeAttachment(attachment);
     this.ctx.acceptWebSocket(server);
     server.send(JSON.stringify({ type: 'welcome', playerId: attachment.id }));
@@ -102,7 +101,7 @@ export class GameRoom extends DurableObject<Env> {
     if (!requester?.host) return this.errorTo(requesterId, 'Só o host pode iniciar');
     if (players.length < 2) return this.errorTo(requesterId, 'Precisa de pelo menos 2 jogadores');
     const countdownEndsAt = Date.now() + COUNTDOWN_MS;
-    this.updateAll(p => ({ ...p, status: 'countdown' as const, startedAt: countdownEndsAt, winnerId: null, aura: 0, mistakes: 0, combo: 0, expected: 'left' as const, eliminated: false, lastInputAt: 0 }));
+    this.updateAll(p => ({ ...p, status: 'countdown' as const, startedAt: countdownEndsAt, winnerId: null, aura: 0, mistakes: 0, combo: 0, expected: 'left' as const, lastInputAt: 0 }));
     await this.ctx.storage.setAlarm(countdownEndsAt);
     this.sendState();
   }
@@ -110,14 +109,14 @@ export class GameRoom extends DurableObject<Env> {
   private async rematch() {
     const players = this.players();
     if (!players.length) return;
-    this.updateAll(p => ({ ...p, status: 'lobby' as const, startedAt: null, winnerId: null, aura: 0, mistakes: 0, combo: 0, expected: 'left' as const, eliminated: false, lastInputAt: 0 }));
+    this.updateAll(p => ({ ...p, status: 'lobby' as const, startedAt: null, winnerId: null, aura: 0, mistakes: 0, combo: 0, expected: 'left' as const, lastInputAt: 0 }));
     await this.ctx.storage.deleteAlarm();
     this.electHost();
     this.sendState();
   }
 
   private input(ws: WebSocket, me: Attachment, hand: Hand) {
-    if (me.status !== 'playing' || me.eliminated) return;
+    if (me.status !== 'playing') return;
     const now = Date.now();
     if (me.startedAt && now - me.startedAt >= DURATION_MS) { this.finish(); return; }
     if (now - me.lastInputAt < MIN_INPUT_GAP_MS) return;
@@ -131,14 +130,12 @@ export class GameRoom extends DurableObject<Env> {
       me.mistakes += 1;
       me.combo = 0;
       me.expected = 'left';
-      if (me.mistakes >= 3) me.eliminated = true;
     }
     me.lastInputAt = now;
     ws.serializeAttachment(me);
     const afterRank = rankFor(me.aura);
     this.broadcast({ type: 'impact', playerId: me.id, hand, correct, auraGained, rankUp: afterRank !== beforeRank ? afterRank : undefined });
-    const active = this.players().filter(p => !p.eliminated);
-    if (active.length <= 1 && this.players().length >= 2) this.finish(); else this.sendState();
+    this.sendState();
   }
 
   async alarm() {
@@ -171,7 +168,7 @@ export class GameRoom extends DurableObject<Env> {
   private state() {
     const players = this.players();
     const first = players[0];
-    return { type: 'state' as const, roomId: first?.roomId ?? this.roomId, status: first?.status ?? 'lobby', players: players.map(p => ({ id: p.id, name: p.name, aura: p.aura, mistakes: p.mistakes, combo: p.combo, expected: p.expected, eliminated: p.eliminated, joinedAt: p.joinedAt, host: p.host, rank: rankFor(p.aura) })), startedAt: first?.startedAt ?? null, durationMs: DURATION_MS, winnerId: first?.winnerId ?? null };
+    return { type: 'state' as const, roomId: first?.roomId ?? this.roomId, status: first?.status ?? 'lobby', players: players.map(p => ({ id: p.id, name: p.name, aura: p.aura, mistakes: p.mistakes, combo: p.combo, expected: p.expected, joinedAt: p.joinedAt, host: p.host, rank: rankFor(p.aura) })), startedAt: first?.startedAt ?? null, durationMs: DURATION_MS, winnerId: first?.winnerId ?? null };
   }
   private sendState() { this.broadcast(this.state()); }
   private broadcast(payload: unknown) { const s = JSON.stringify(payload); for (const ws of this.ctx.getWebSockets()) try { ws.send(s); } catch { } }
