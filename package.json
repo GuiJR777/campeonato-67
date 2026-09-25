@@ -1,0 +1,11 @@
+{
+  "name": "campeonato-67",
+  "private": true,
+  "workspaces": ["frontend", "worker"],
+  "scripts": {
+    "dev:front": "npm --workspace frontend run dev",
+    "dev:worker": "npm --workspace worker run dev",
+    "build": "npm --workspace frontend run build && npm --workspace worker run check",
+    "deploy:worker": "npm --workspace worker run deploy"
+  }
+}
